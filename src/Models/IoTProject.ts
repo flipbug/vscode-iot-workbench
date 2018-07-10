@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {ConfigHandler} from '../configHandler';
-import {ConfigKey} from '../constants';
+import {ConfigKey, FileNames} from '../constants';
 import {EventNames} from '../constants';
 import {TelemetryContext, TelemetryWorker} from '../telemetry';
 
@@ -30,6 +30,7 @@ import {RaspberryPiDevice} from './RaspberryPiDevice';
 const constants = {
   deviceDefaultFolderName: 'Device',
   functionDefaultFolderName: 'Functions',
+  armDefaultFolderName: 'ARM',
   workspaceConfigFilePath: 'project.code-workspace'
 };
 
@@ -219,10 +220,18 @@ export class IoTProject {
     }
 
     if (armTemplate) {
-      provisionItemList.pop();
+      const _provisionItemList: string[] = [];
+      for (let i = 0; i < provisionItemList.length; i++) {
+        if (provisionItemList[i] === 'ARM Template') {
+          _provisionItemList[i] = `>> ${i + 1}. ${provisionItemList[i]}`;
+        } else {
+          _provisionItemList[i] = `${i + 1}. ${provisionItemList[i]}`;
+        }
+      }
+
       await vscode.window.showQuickPick(
           [{
-            label: provisionItemList.join('   -   ') + '   -   >> ARM Template',
+            label: _provisionItemList.join('   -   '),
             description: '',
             detail: 'Click to continue'
           }],
@@ -369,6 +378,30 @@ export class IoTProject {
 
         this.componentList.push(iothub);
         this.componentList.push(azureFunctions);
+        break;
+      }
+      case ProjectTemplateType.StreamAnalytics: {
+        const iothub = new IoTHub(this.channel);
+
+        const armDir =
+            path.join(this.projectRootPath, constants.armDefaultFolderName);
+
+        if (!fs.existsSync(armDir)) {
+          fs.mkdirSync(armDir);
+        }
+
+        const armFilePath = this.extensionContext.asAbsolutePath(path.join(
+            FileNames.resourcesFolderName, 'arm',
+            'iothub-streamanalytics.json'));
+        fs.copyFileSync(armFilePath, path.join(armDir, 'deploy.json'));
+
+        workspace.folders.push({path: constants.armDefaultFolderName});
+        workspace.settings[`IoTWorkbench.${ConfigKey.armPath}`] =
+            constants.armDefaultFolderName;
+
+        this.componentList.push(iothub);
+        // no need to push arm into component list
+        // we handle it in other method
         break;
       }
       default:
