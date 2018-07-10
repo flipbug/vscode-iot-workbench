@@ -186,7 +186,7 @@ export class Azure {
   private _commonParameterCheck(
       _value: string, parameter: ARMParameterTemplateValue) {
     let value: string|number|boolean|null = null;
-    switch (parameter.type) {
+    switch (parameter.type.toLocaleLowerCase()) {
       case 'string':
         value = _value;
         break;
@@ -261,60 +261,58 @@ export class Azure {
       } else if (key.substr(0, 1) === '$') {
         const _key = key.substr(1);
 
-        let iothubConnectionString: string|undefined = undefined;
+        const iothubConnectionString =
+            ConfigHandler.get<string>('iothubConnectionString');
 
         switch (_key) {
           case 'iotHubName':
-            iothubConnectionString =
-                ConfigHandler.get<string>('iothubConnectionString');
             if (!iothubConnectionString) {
-              value = null;
+              inputValue = '';
             } else {
               const iotHubNameMatches =
-                  iothubConnectionString.match('HostName=(.*?)\.');
+                  iothubConnectionString.match(/HostName=(.*?)\./);
               if (!iotHubNameMatches) {
-                value = null;
+                inputValue = '';
               } else {
-                value = iotHubNameMatches[1];
+                inputValue = iotHubNameMatches[1];
               }
             }
             break;
           case 'iotHubKeyName':
-            iothubConnectionString =
-                ConfigHandler.get<string>('iothubConnectionString');
             if (!iothubConnectionString) {
-              value = null;
+              inputValue = '';
             } else {
-              const iotHubKeyNameMatches =
-                  iothubConnectionString.match('SharedAccessKeyName=(.*?)[;$]');
+              const iotHubKeyNameMatches = iothubConnectionString.match(
+                  /SharedAccessKeyName=(.*?)(;|$)/);
               if (!iotHubKeyNameMatches) {
-                value = null;
+                inputValue = '';
               } else {
-                value = iotHubKeyNameMatches[1];
+                inputValue = iotHubKeyNameMatches[1];
               }
             }
             break;
           case 'iotHubKey':
-            iothubConnectionString =
-                ConfigHandler.get<string>('iothubConnectionString');
             if (!iothubConnectionString) {
-              value = null;
+              inputValue = '';
             } else {
               const iotHubKeyMatches =
-                  iothubConnectionString.match('SharedAccessKey=(.*?)[;$]');
+                  iothubConnectionString.match(/SharedAccessKey=(.*?)(;|$)/);
               if (!iotHubKeyMatches) {
-                value = null;
+                inputValue = '';
               } else {
-                value = iotHubKeyMatches[1];
+                inputValue = iotHubKeyMatches[1];
               }
             }
+            break;
+          case 'subscription':
+            inputValue = this._subscriptionId || '';
             break;
           default:
             const _value = ConfigHandler.get<string>(_key);
             if (!_value) {
-              value = null;
+              inputValue = '';
             } else {
-              value = _value;
+              inputValue = _value;
             }
         }
       } else {
@@ -335,7 +333,7 @@ export class Azure {
         inputValue = _value;
       }
 
-      switch (parameter.type) {
+      switch (parameter.type.toLocaleLowerCase()) {
         case 'string':
           value = inputValue;
           break;
