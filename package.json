@@ -97,6 +97,9 @@
           "IoTWorkbench.FunctionPath": {
             "type": "string"
           },
+          "IoTWorkbench.ARMPath": {
+            "type": "string"
+          },
           "IoTWorkbench.iothubConnectionString": {
             "type": "string"
           },

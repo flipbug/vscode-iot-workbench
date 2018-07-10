@@ -12,6 +12,7 @@ import {TelemetryContext, TelemetryWorker} from '../telemetry';
 
 import {checkAzureLogin} from './Apis';
 import {AZ3166Device} from './AZ3166Device';
+import {ARMTemplate, Azure} from './Azure';
 import {AzureFunctions} from './AzureFunctions';
 import {Compilable} from './Interfaces/Compilable';
 import {Component, ComponentType} from './Interfaces/Component';
@@ -203,6 +204,46 @@ export class IoTProject {
         }
       }
     }
+
+    if (vscode.workspace.workspaceFolders) {
+      const armPath = ConfigHandler.get<string>(ConfigKey.armPath);
+      if (armPath) {
+        const armLocation = path.join(
+            vscode.workspace.workspaceFolders[0].uri.fsPath, '..', armPath,
+            'deploy.json');
+        if (fs.existsSync(armLocation)) {
+          const armTemplate =
+              JSON.parse(fs.readFileSync(armLocation, 'utf8')) as ARMTemplate;
+          let deployPendding: NodeJS.Timer|null = null;
+          if (this.channel) {
+            this.channel.show();
+            this.channel.appendLine(
+                'Deploying Azure Resource Manager Template...');
+            deployPendding = setInterval(() => {
+              this.channel.append('.');
+            }, 1000);
+          }
+
+          try {
+            const azureClient = new Azure();
+            const deployment = await azureClient.deployARMTemplate(armTemplate);
+            if (!deployment) {
+              return false;
+            } else if (this.channel && deployPendding) {
+              clearInterval(deployPendding);
+              this.channel.appendLine('.');
+            }
+          } catch (error) {
+            if (this.channel && deployPendding) {
+              clearInterval(deployPendding);
+              this.channel.appendLine('.');
+            }
+            throw error;
+          }
+        }
+      }
+    }
+
     return true;
   }
 

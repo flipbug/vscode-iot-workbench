@@ -3,6 +3,7 @@ import {ServiceClientCredentials} from 'ms-rest';
 import * as vscode from 'vscode';
 
 import {AzureAccount, AzureResourceFilter} from '../azure-account.api';
+import {ConfigHandler} from '../configHandler';
 
 import {getExtension} from './Apis';
 import {extensionName} from './Interfaces/Api';
@@ -28,7 +29,13 @@ export interface ARMParameterTemplate {
 export interface ARMTemplate { parameters: ARMParameterTemplate; }
 
 export class Azure {
-  constructor(private _subscriptionId: string) {}
+  constructor(subscriptionId?: string) {
+    if (subscriptionId) {
+      this._subscriptionId = subscriptionId;
+    }
+  }
+
+  private _subscriptionId: string|undefined = undefined;
 
   private _azureAccountExtension: AzureAccount|undefined =
       getExtension(extensionName.AzureAccount);
@@ -60,12 +67,14 @@ export class Azure {
   }
 
   private async _getCredential(): Promise<ServiceClientCredentials|undefined> {
+    this._subscriptionId = await this._getSubscription();
+
     if (!this._azureAccountExtension) {
       throw new Error('Azure account extension is not found.');
     }
 
     if (!this._subscriptionId) {
-      throw new Error('Subscription ID is required.');
+      return undefined;
     }
 
     const subscriptions: AzureResourceFilter[] =
@@ -81,6 +90,12 @@ export class Azure {
   }
 
   private async _getResourceClient() {
+    this._subscriptionId = await this._getSubscription();
+
+    if (!this._subscriptionId) {
+      return undefined;
+    }
+
     const credential = await this._getCredential();
     if (credential) {
       const client =
@@ -100,6 +115,12 @@ export class Azure {
   }
 
   private async _getLocations() {
+    this._subscriptionId = await this._getSubscription();
+
+    if (!this._subscriptionId) {
+      return undefined;
+    }
+
     const client = await this._getSubscriptionClient();
     if (!client) {
       return undefined;
@@ -159,7 +180,7 @@ export class Azure {
     const resourceGroup = await client.resourceGroups.createOrUpdate(
         resourceGroupName, {location: resourceGroupLocation.description});
 
-    return resourceGroup.location;
+    return resourceGroup.name;
   }
 
   private _commonParameterCheck(
@@ -237,6 +258,65 @@ export class Azure {
         }
 
         inputValue = _value.label;
+      } else if (key.substr(0, 1) === '$') {
+        const _key = key.substr(1);
+
+        let iothubConnectionString: string|undefined = undefined;
+
+        switch (_key) {
+          case 'iotHubName':
+            iothubConnectionString =
+                ConfigHandler.get<string>('iothubConnectionString');
+            if (!iothubConnectionString) {
+              value = null;
+            } else {
+              const iotHubNameMatches =
+                  iothubConnectionString.match('HostName=(.*?)\.');
+              if (!iotHubNameMatches) {
+                value = null;
+              } else {
+                value = iotHubNameMatches[1];
+              }
+            }
+            break;
+          case 'iotHubKeyName':
+            iothubConnectionString =
+                ConfigHandler.get<string>('iothubConnectionString');
+            if (!iothubConnectionString) {
+              value = null;
+            } else {
+              const iotHubKeyNameMatches =
+                  iothubConnectionString.match('SharedAccessKeyName=(.*?)[;$]');
+              if (!iotHubKeyNameMatches) {
+                value = null;
+              } else {
+                value = iotHubKeyNameMatches[1];
+              }
+            }
+            break;
+          case 'iotHubKey':
+            iothubConnectionString =
+                ConfigHandler.get<string>('iothubConnectionString');
+            if (!iothubConnectionString) {
+              value = null;
+            } else {
+              const iotHubKeyMatches =
+                  iothubConnectionString.match('SharedAccessKey=(.*?)[;$]');
+              if (!iotHubKeyMatches) {
+                value = null;
+              } else {
+                value = iotHubKeyMatches[1];
+              }
+            }
+            break;
+          default:
+            const _value = ConfigHandler.get<string>(_key);
+            if (!_value) {
+              value = null;
+            } else {
+              value = _value;
+            }
+        }
       } else {
         const _value = await vscode.window.showInputBox({
           prompt: `Input value for ${key}`,
@@ -275,7 +355,11 @@ export class Azure {
     return parameters;
   }
 
-  async getSubscription() {
+  private async _getSubscription() {
+    if (this._subscriptionId) {
+      return this._subscriptionId;
+    }
+
     const subscription = await vscode.window.showQuickPick(
         this._getSubscriptionList(),
         {placeHolder: 'Select Subscription', ignoreFocusOut: true});
@@ -285,50 +369,59 @@ export class Azure {
     return subscription.description;
   }
 
-  async getResourceGroup() {
+  private async _getResourceGroupItems() {
     const client = await this._getResourceClient();
-    const resourceGrouplist: vscode.QuickPickItem[] = [];
+
     if (!client) {
-      return undefined;
+      return [];
     }
 
+    const resourceGrouplist: vscode.QuickPickItem[] =
+        [{label: '$(plus) Create Resource Group', description: '', detail: ''}];
+
     const resourceGroups = await client.resourceGroups.list();
-    if (resourceGrouplist.length === 0) {
-      return this._createResouceGroup();
-    }
 
     for (const resourceGroup of resourceGroups) {
       resourceGrouplist.push({
         label: resourceGroup.name as string,
-        description: '',
-        detail: resourceGroup.location
+        description: resourceGroup.location,
+        detail: ''
       });
     }
 
-    resourceGrouplist.push({
-      label: 'Create new resource group',
-      description: '',
-      detail: 'Create new resource group'
-    });
+    return resourceGrouplist;
+  }
+
+  async getResourceGroup() {
+    const client = await this._getResourceClient();
+
+    if (!client) {
+      return undefined;
+    }
 
     const choice = await vscode.window.showQuickPick(
-        resourceGrouplist,
+        this._getResourceGroupItems(),
         {placeHolder: 'Select Resource Group', ignoreFocusOut: true});
 
     if (!choice) {
       return undefined;
     }
 
-    if (choice.detail === 'Create new resource group') {
+    if (choice.description === '') {
       return this._createResouceGroup();
     } else {
-      return choice.detail;
+      return choice.label;
     }
   }
 
   async deployARMTemplate(template: ARMTemplate) {
     const client = await this._getResourceClient();
     if (!client) {
+      return undefined;
+    }
+
+    const resourceGroup = await this.getResourceGroup();
+    if (!resourceGroup) {
       return undefined;
     }
 
@@ -340,11 +433,6 @@ export class Azure {
     const mode = 'Incremental';
     const deploymentParameters:
         ResourceModels.Deployment = {properties: {parameters, template, mode}};
-
-    const resourceGroup = await this.getResourceGroup();
-    if (!resourceGroup) {
-      return undefined;
-    }
 
     const deployment = await client.deployments.createOrUpdate(
         resourceGroup, `IoTWorkbecnhDeploy${new Date().getTime()}`,
