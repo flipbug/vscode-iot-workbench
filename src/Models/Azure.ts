@@ -1,4 +1,4 @@
-import {ResourceManagementClient, SubscriptionClient} from 'azure-arm-resource';
+import {ResourceManagementClient, ResourceModels, SubscriptionClient} from 'azure-arm-resource';
 import {ServiceClientCredentials} from 'ms-rest';
 import * as vscode from 'vscode';
 
@@ -6,6 +6,26 @@ import {AzureAccount, AzureResourceFilter} from '../azure-account.api';
 
 import {getExtension} from './Apis';
 import {extensionName} from './Interfaces/Api';
+
+export interface ARMParameters {
+  [key: string]: {value: string|number|boolean|null};
+}
+
+export interface ARMParameterTemplateValue {
+  type: string;
+  defaultValue?: string|number|boolean|{}|Array<{}>|null;
+  allowedValues?: Array<string|number|boolean|null>;
+  minValue?: number;
+  maxValue?: number;
+  minLength?: number;
+  maxLength?: number;
+}
+
+export interface ARMParameterTemplate {
+  [key: string]: ARMParameterTemplateValue;
+}
+
+export interface ARMTemplate { parameters: ARMParameterTemplate; }
 
 export class Azure {
   constructor(private _subscriptionId: string) {}
@@ -142,6 +162,119 @@ export class Azure {
     return resourceGroup.location;
   }
 
+  private _commonParameterCheck(
+      _value: string, parameter: ARMParameterTemplateValue) {
+    let value: string|number|boolean|null = null;
+    switch (parameter.type) {
+      case 'string':
+        value = _value;
+        break;
+      case 'int':
+        value = Number(_value);
+        break;
+      case 'bool':
+        value = _value.toLocaleLowerCase() === 'true';
+        break;
+      default:
+        break;
+    }
+
+    if (value === null) {
+      return '';
+    }
+
+    if (typeof value === 'string' && parameter.minLength !== undefined &&
+        parameter.minLength > value.length) {
+      return `The value does\'t meet requirement: minLength ${
+          parameter.minLength}.`;
+    }
+
+    if (typeof value === 'string' && parameter.maxLength !== undefined &&
+        parameter.maxLength < value.length) {
+      return `The value does\'t meet requirement: maxLength ${
+          parameter.maxLength}.`;
+    }
+
+    if (typeof value === 'number' && parameter.minValue !== undefined &&
+        parameter.minValue > value) {
+      return `The value does\'t meet requirement: minValue ${
+          parameter.minValue}.`;
+    }
+
+    if (typeof value === 'number' && parameter.maxValue !== undefined &&
+        parameter.maxValue < value) {
+      return `The value does\'t meet requirement: maxValue ${
+          parameter.maxValue}.`;
+    }
+
+    if (typeof value === 'number' && isNaN(value)) {
+      return `The value is not a valid number.`;
+    }
+
+    return '';
+  }
+
+  private async _getARMParameters(parameterTemplate: ARMParameterTemplate) {
+    const parameters: ARMParameters = {};
+    for (const key of Object.keys(parameterTemplate)) {
+      const parameter = parameterTemplate[key];
+      let value: string|number|boolean|null = null;
+      let inputValue = '';
+
+      if (parameter.allowedValues) {
+        const values: vscode.QuickPickItem[] = [];
+        for (const value of parameter.allowedValues) {
+          if (value !== null) {
+            values.push({label: value.toString(), description: ''});
+          }
+        }
+
+        const _value = await vscode.window.showQuickPick(
+            values,
+            {placeHolder: `Select value of ${key}`, ignoreFocusOut: true});
+        if (!_value) {
+          return undefined;
+        }
+
+        inputValue = _value.label;
+      } else {
+        const _value = await vscode.window.showInputBox({
+          prompt: `Input value for ${key}`,
+          ignoreFocusOut: true,
+          value: parameter.defaultValue ? parameter.defaultValue.toString() :
+                                          '',
+          validateInput: async (value: string) => {
+            return this._commonParameterCheck(value, parameter);
+          }
+        });
+
+        if (!_value) {
+          return undefined;
+        }
+
+        inputValue = _value;
+      }
+
+      switch (parameter.type) {
+        case 'string':
+          value = inputValue;
+          break;
+        case 'int':
+          value = Number(inputValue);
+          break;
+        case 'bool':
+          value = inputValue.toLocaleLowerCase() === 'true';
+          break;
+        default:
+          break;
+      }
+
+      parameters[key] = {value};
+    }
+
+    return parameters;
+  }
+
   async getSubscription() {
     const subscription = await vscode.window.showQuickPick(
         this._getSubscriptionList(),
@@ -191,5 +324,31 @@ export class Azure {
     } else {
       return choice.detail;
     }
+  }
+
+  async deployARMTemplate(template: ARMTemplate) {
+    const client = await this._getResourceClient();
+    if (!client) {
+      return undefined;
+    }
+
+    const parameters = await this._getARMParameters(template.parameters);
+    if (!parameters) {
+      return undefined;
+    }
+
+    const mode = 'Incremental';
+    const deploymentParameters:
+        ResourceModels.Deployment = {properties: {parameters, template, mode}};
+
+    const resourceGroup = await this.getResourceGroup();
+    if (!resourceGroup) {
+      return undefined;
+    }
+
+    const deployment = await client.deployments.createOrUpdate(
+        resourceGroup, `IoTWorkbecnhDeploy${new Date().getTime()}`,
+        deploymentParameters);
+    return deployment;
   }
 }
