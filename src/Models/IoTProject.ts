@@ -162,6 +162,7 @@ export class IoTProject {
 
   async provision(): Promise<boolean> {
     const devicePath = ConfigHandler.get<string>(ConfigKey.devicePath);
+    const armPath = ConfigHandler.get<string>(ConfigKey.armPath);
     if (!devicePath) {
       throw new Error(
           'Cannot run IoT Workbench command in a non-IoTWorkbench project. Please initialize an IoT Workbench project first.');
@@ -171,6 +172,18 @@ export class IoTProject {
     for (const item of this.componentList) {
       if (this.canProvision(item)) {
         provisionItemList.push(item.name);
+      }
+    }
+
+    let armTemplate: ARMTemplate|undefined = undefined;
+    if (armPath && vscode.workspace.workspaceFolders) {
+      const armLocation = path.join(
+          vscode.workspace.workspaceFolders[0].uri.fsPath, '..', armPath,
+          'deploy.json');
+      if (fs.existsSync(armLocation)) {
+        provisionItemList.push('ARM Template');
+        armTemplate =
+            JSON.parse(fs.readFileSync(armLocation, 'utf8')) as ARMTemplate;
       }
     }
 
@@ -205,42 +218,41 @@ export class IoTProject {
       }
     }
 
-    if (vscode.workspace.workspaceFolders) {
-      const armPath = ConfigHandler.get<string>(ConfigKey.armPath);
-      if (armPath) {
-        const armLocation = path.join(
-            vscode.workspace.workspaceFolders[0].uri.fsPath, '..', armPath,
-            'deploy.json');
-        if (fs.existsSync(armLocation)) {
-          const armTemplate =
-              JSON.parse(fs.readFileSync(armLocation, 'utf8')) as ARMTemplate;
-          let deployPendding: NodeJS.Timer|null = null;
-          if (this.channel) {
-            this.channel.show();
-            this.channel.appendLine(
-                'Deploying Azure Resource Manager Template...');
-            deployPendding = setInterval(() => {
-              this.channel.append('.');
-            }, 1000);
-          }
+    if (armTemplate) {
+      provisionItemList.pop();
+      await vscode.window.showQuickPick(
+          [{
+            label: provisionItemList.join('   -   ') + '   -   >> ARM Template',
+            description: '',
+            detail: 'Click to continue'
+          }],
+          {ignoreFocusOut: true, placeHolder: 'Provision process'});
 
-          try {
-            const azureClient = new Azure();
-            const deployment = await azureClient.deployARMTemplate(armTemplate);
-            if (!deployment) {
-              return false;
-            } else if (this.channel && deployPendding) {
-              clearInterval(deployPendding);
-              this.channel.appendLine('.');
-            }
-          } catch (error) {
-            if (this.channel && deployPendding) {
-              clearInterval(deployPendding);
-              this.channel.appendLine('.');
-            }
-            throw error;
-          }
+      let deployPendding: NodeJS.Timer|null = null;
+      if (this.channel) {
+        this.channel.show();
+        this.channel.appendLine('Deploying Azure Resource Manager Template...');
+        deployPendding = setInterval(() => {
+          this.channel.append('.');
+        }, 1000);
+      }
+
+      try {
+        const azureClient = new Azure();
+        const deployment = await azureClient.deployARMTemplate(armTemplate);
+        if (!deployment) {
+          return false;
+        } else if (this.channel && deployPendding) {
+          clearInterval(deployPendding);
+          this.channel.appendLine('.');
+          this.channel.appendLine(JSON.stringify(deployment, null, 2));
         }
+      } catch (error) {
+        if (this.channel && deployPendding) {
+          clearInterval(deployPendding);
+          this.channel.appendLine('.');
+        }
+        throw error;
       }
     }
 
