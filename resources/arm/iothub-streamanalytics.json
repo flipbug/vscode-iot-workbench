@@ -5,6 +5,15 @@
     "streamingJobName": {
       "type": "string"
     },
+    "cosmosDBName": {
+      "type": "string"
+    },
+    "cosmosDBDatabase": {
+      "type": "string"
+    },
+    "cosmosDBCollection": {
+      "type": "string"
+    },
     "$iotHubName": {
       "type": "string"
     },
@@ -14,11 +23,31 @@
     "$iotHubKey": {
       "type": "string"
     },
-    "$$ASA/query.asaql": {
+    "$$StreamAnalytics/query.asaql": {
       "type": "string"
     }
   },
   "resources": [
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "kind": "GlobalDocumentDB",
+      "name": "[parameters('cosmosDBName')]",
+      "apiVersion": "2015-04-08",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "defaultExperience": "DocumentDB"
+      },
+      "scale": null,
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session",
+          "maxIntervalInSeconds": 5,
+          "maxStalenessPrefix": 100
+        }
+      },
+      "dependsOn": []
+    },
     {
       "type": "Microsoft.StreamAnalytics/streamingjobs",
       "name": "[parameters('streamingJobName')]",
@@ -39,7 +68,7 @@
           "name": "Transformation",
           "properties": {
             "streamingUnits": 1,
-            "query": "[parameters('$$ASA/query.asaql')]"
+            "query": "[parameters('$$StreamAnalytics/query.asaql')]"
           }
         }
       },
@@ -74,6 +103,27 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.StreamAnalytics/streamingjobs', parameters('streamingJobName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.StreamAnalytics/streamingjobs/outputs",
+      "name": "[concat(parameters('streamingJobName'), '/cosmosdb')]",
+      "apiVersion": "2016-03-01",
+      "scale": null,
+      "properties": {
+        "datasource": {
+          "type": "Microsoft.Storage/DocumentDB",
+          "properties": {
+            "accountId": "[parameters('cosmosDBName')]",
+            "accountKey": "[listKeys(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDBName')), '2015-04-08').primaryMasterKey]",
+            "database": "[parameters('cosmosDBDatabase')]",
+            "collectionNamePattern": "[parameters('cosmosDBCollection')]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.StreamAnalytics/streamingjobs', parameters('streamingJobName'))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDBName'))]"
       ]
     }
   ]

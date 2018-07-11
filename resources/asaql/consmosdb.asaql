@@ -1,6 +1,6 @@
 SELECT
     *
 INTO
-    storage
+    cosmosdb
 FROM
     iothub

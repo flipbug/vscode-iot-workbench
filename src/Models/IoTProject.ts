@@ -406,8 +406,8 @@ export class IoTProject {
           fs.mkdirSync(asaDir);
         }
 
-        const asaFilePath = this.extensionContext.asAbsolutePath(
-            path.join(FileNames.resourcesFolderName, 'asaql', 'storage.asaql'));
+        const asaFilePath = this.extensionContext.asAbsolutePath(path.join(
+            FileNames.resourcesFolderName, 'asaql', 'consmosdb.asaql'));
         fs.copyFileSync(asaFilePath, path.join(asaDir, 'query.asaql'));
 
         workspace.folders.push({path: constants.asaFolderName});
