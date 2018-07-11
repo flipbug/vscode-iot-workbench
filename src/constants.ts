@@ -11,6 +11,7 @@ export class ConfigKey {
   static readonly functionPath = 'FunctionPath';
   static readonly boardId = 'BoardId';
   static readonly armPath = 'ARMPath';
+  static readonly asaPath = 'StreamAnalyticsPath';
 }
 
 export class EventNames {

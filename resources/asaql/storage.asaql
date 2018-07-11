@@ -1,0 +1,6 @@
+SELECT
+    *
+INTO
+    storage
+FROM
+    iothub

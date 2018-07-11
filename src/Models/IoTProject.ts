@@ -31,6 +31,7 @@ const constants = {
   deviceDefaultFolderName: 'Device',
   functionDefaultFolderName: 'Functions',
   armDefaultFolderName: 'ARM',
+  asaFolderName: 'StreamAnalytics',
   workspaceConfigFilePath: 'project.code-workspace'
 };
 
@@ -247,7 +248,7 @@ export class IoTProject {
       }
 
       try {
-        const azureClient = new Azure();
+        const azureClient = new Azure(this.extensionContext, this.channel);
         const deployment = await azureClient.deployARMTemplate(armTemplate);
         if (!deployment) {
           return false;
@@ -398,6 +399,20 @@ export class IoTProject {
         workspace.folders.push({path: constants.armDefaultFolderName});
         workspace.settings[`IoTWorkbench.${ConfigKey.armPath}`] =
             constants.armDefaultFolderName;
+
+        const asaDir = path.join(this.projectRootPath, constants.asaFolderName);
+
+        if (!fs.existsSync(asaDir)) {
+          fs.mkdirSync(asaDir);
+        }
+
+        const asaFilePath = this.extensionContext.asAbsolutePath(
+            path.join(FileNames.resourcesFolderName, 'asaql', 'storage.asaql'));
+        fs.copyFileSync(asaFilePath, path.join(asaDir, 'query.asaql'));
+
+        workspace.folders.push({path: constants.asaFolderName});
+        workspace.settings[`IoTWorkbench.${ConfigKey.asaPath}`] =
+            constants.asaFolderName;
 
         this.componentList.push(iothub);
         // no need to push arm into component list

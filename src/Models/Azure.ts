@@ -1,5 +1,7 @@
 import {ResourceManagementClient, ResourceModels, SubscriptionClient} from 'azure-arm-resource';
+import * as fs from 'fs-plus';
 import {ServiceClientCredentials} from 'ms-rest';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import {AzureAccount, AzureResourceFilter} from '../azure-account.api';
@@ -29,7 +31,9 @@ export interface ARMParameterTemplate {
 export interface ARMTemplate { parameters: ARMParameterTemplate; }
 
 export class Azure {
-  constructor(subscriptionId?: string) {
+  constructor(
+      private _context: vscode.ExtensionContext,
+      private _channel?: vscode.OutputChannel, subscriptionId?: string) {
     if (subscriptionId) {
       this._subscriptionId = subscriptionId;
     }
@@ -258,7 +262,23 @@ export class Azure {
         }
 
         inputValue = _value.label;
+      } else if (key.substr(0, 2) === '$$') {
+        // Read value from file
+        if (!vscode.workspace.workspaceFolders) {
+          inputValue = '';
+        } else {
+          const _key = key.substr(2);
+          const filePath = path.join(
+              vscode.workspace.workspaceFolders[0].uri.fsPath, '..', _key);
+          this._context.asAbsolutePath(_key);
+          if (fs.existsSync(filePath)) {
+            inputValue = fs.readFileSync(filePath, 'utf8');
+          } else {
+            inputValue = '';
+          }
+        }
       } else if (key.substr(0, 1) === '$') {
+        // Read value from workspace config
         const _key = key.substr(1);
 
         const iothubConnectionString =
