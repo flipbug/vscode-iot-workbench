@@ -257,6 +257,21 @@ export class IoTProject {
           this.channel.appendLine('.');
           this.channel.appendLine(JSON.stringify(deployment, null, 2));
         }
+
+        if (deployment.properties && deployment.properties.outputs) {
+          const cosmosDBName:string = deployment.properties.outputs.cosmosDBName.value;
+          const cosmosDBDatabase:string = deployment.properties.outputs.cosmosDBDatabase.value;
+          const cosmosDBCollection:string = deployment.properties.outputs.cosmosDBCollection.value;
+          const cosmosDBAccountKey:string = deployment.properties.outputs.cosmosDBAccountKey.value;
+
+          if (!cosmosDBName || !cosmosDBDatabase || !cosmosDBCollection || !cosmosDBAccountKey) {
+            return false;
+          } else {
+            // create cosmos db database and collection
+          }
+        } else {
+          return false;
+        }
       } catch (error) {
         if (this.channel && deployPendding) {
           clearInterval(deployPendding);

@@ -3,6 +3,8 @@ import * as fs from 'fs-plus';
 import {ServiceClientCredentials} from 'ms-rest';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
+import request = require('request-promise');
 
 import {AzureAccount, AzureResourceFilter} from '../azure-account.api';
 import {ConfigHandler} from '../configHandler';
@@ -456,5 +458,51 @@ export class Azure {
         resourceGroup, `IoTWorkbecnhDeploy${new Date().getTime()}`,
         deploymentParameters);
     return deployment;
+  }
+}
+
+export class CosmosDB {
+  constructor(private _account:string, private _key:string) {
+
+  }
+
+  private _getCosmosDBAuthorizationToken(verb: string, date: string, resourceType: string, resourceId: string) {
+    const key = new Buffer(this._key, 'base64');
+    const stringToSign = `${verb}\n${resourceType}\n${resourceId}\n${date}\n\n`;
+
+    const body = new Buffer(stringToSign.toLowerCase(), 'utf8');  
+    const signature = crypto.createHmac('sha256', key).update(body).digest('base64');  
+
+    const MasterToken = 'master';  
+    const TokenVersion = '1.0';  
+
+    return encodeURIComponent(`type=${MasterToken}&ver=${TokenVersion}&sig=${signature}`);
+  }
+
+  private _getRestHeaders(verb: string, resourceType: string, resourceId: string) {
+    const date = new Date().toUTCString();
+    const authorization = this._getCosmosDBAuthorizationToken(verb, date, resourceType, resourceId);
+    const headers = {
+      'Authorization': authorization,
+      'Content-Type': 'application/json',
+      'x-ms-date': date,
+      'x-ms-version': '2017-02-22'
+    };
+
+    return headers;
+  }
+
+  private async _apiRequest(verb: string, resourceType: string, resourceId: string) {
+    const apiUrl = `https://${this._account}.documents.azure.com/${resourceType}/${resourceId}`;
+    const apiRes = await request({
+      method: verb,
+      uri: apiUrl,
+      encoding: 'utf8'
+    });
+  }
+
+  async ensureCosmosDBDatabase(database:string) {
+    const apiUrl = `https://${this._account}.documents.azure.com/dbs/${database}`;
+
   }
 }

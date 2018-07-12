@@ -126,5 +126,23 @@
         "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDBName'))]"
       ]
     }
-  ]
+  ],
+  "outputs": {
+    "cosmosDBName": {
+      "type": "string",
+      "value": "[parameters('cosmosDBName')]"
+    },
+    "cosmosDBDatabase": {
+      "type": "string",
+      "value": "[parameters('cosmosDBDatabase')]"
+    },
+    "cosmosDBCollection": {
+      "type": "string",
+      "value": "[parameters('cosmosDBCollection')]"
+    },
+    "cosmosDBAccountKey": {
+      "type": "string",
+      "value": "[listKeys(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDBName')), '2015-04-08').primaryMasterKey]"
+    }
+  }
 }
