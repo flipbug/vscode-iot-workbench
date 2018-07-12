@@ -12,7 +12,7 @@ import {TelemetryContext, TelemetryWorker} from '../telemetry';
 
 import {checkAzureLogin} from './Apis';
 import {AZ3166Device} from './AZ3166Device';
-import {ARMTemplate, Azure} from './Azure';
+import {ARMTemplate, Azure, CosmosDB} from './Azure';
 import {AzureFunctions} from './AzureFunctions';
 import {Compilable} from './Interfaces/Compilable';
 import {Component, ComponentType} from './Interfaces/Component';
@@ -251,6 +251,11 @@ export class IoTProject {
         const azureClient = new Azure(this.extensionContext, this.channel);
         const deployment = await azureClient.deployARMTemplate(armTemplate);
         if (!deployment) {
+          if (this.channel && deployPendding) {
+            clearInterval(deployPendding);
+            this.channel.appendLine('.');
+          }
+
           return false;
         } else if (this.channel && deployPendding) {
           clearInterval(deployPendding);
@@ -259,15 +264,28 @@ export class IoTProject {
         }
 
         if (deployment.properties && deployment.properties.outputs) {
-          const cosmosDBName:string = deployment.properties.outputs.cosmosDBName.value;
-          const cosmosDBDatabase:string = deployment.properties.outputs.cosmosDBDatabase.value;
-          const cosmosDBCollection:string = deployment.properties.outputs.cosmosDBCollection.value;
-          const cosmosDBAccountKey:string = deployment.properties.outputs.cosmosDBAccountKey.value;
+          const cosmosDBName: string =
+              deployment.properties.outputs.cosmosDBName.value;
+          const cosmosDBDatabase: string =
+              deployment.properties.outputs.cosmosDBDatabase.value;
+          const cosmosDBCollection: string =
+              deployment.properties.outputs.cosmosDBCollection.value;
+          const cosmosDBAccountKey: string =
+              deployment.properties.outputs.cosmosDBAccountKey.value;
 
-          if (!cosmosDBName || !cosmosDBDatabase || !cosmosDBCollection || !cosmosDBAccountKey) {
+          if (!cosmosDBName || !cosmosDBDatabase || !cosmosDBCollection ||
+              !cosmosDBAccountKey) {
             return false;
           } else {
-            // create cosmos db database and collection
+            const cosmosdb =
+                new CosmosDB(cosmosDBName, cosmosDBAccountKey, this.channel);
+            const collectionRes = await cosmosdb.ensureCollection(
+                cosmosDBDatabase, cosmosDBCollection);
+            if (this.channel && deployPendding) {
+              clearInterval(deployPendding);
+              this.channel.appendLine('.');
+            }
+            return collectionRes;
           }
         } else {
           return false;
